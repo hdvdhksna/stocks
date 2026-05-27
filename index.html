@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>股票查價機</title>
+    <title>兄弟專屬股票查價機</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/theme/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background-color: #f4f6f9; font-family: "Microsoft JhengHei", sans-serif; padding: 40px 0; }
@@ -19,39 +19,144 @@
 <div class="container">
     <div class="row justify-content-center">
         <div class="col-md-8">
-
             <div class="text-center mb-4">
                 <h1 class="display-6 fw-bold text-dark">🚀 萬用股票點菜查價機 (網頁版)</h1>
-                <p class="text-muted">免安裝任何環境！直接輸入代號與天數即可查詢最新數據。</p>
+                <p class="text-muted">免安裝環境！直接輸入代號與天數即可查詢最新數據。</p>
             </div>
 
             <div class="card p-4 bg-white">
                 <div class="mb-3">
                     <label class="form-label fw-bold">🖨️ 請輸入股票代號：</label>
-                    <input type="text" id="userStock" class="form-control form-control-lg" value="2330.TW" placeholder="例如: 2330.TW 或 NVDA">
+                    <input type="text" id="userStock" class="form-control form-control-lg" value="2330.TW">
                     <div class="form-text text-muted mt-2">
-                        💡 常用熱門提示：台積電(2330.TW)、鴻海(2317.TW)、玉山金(2884.TW)、輝達(NVDA)<br>
-                        <span class="text-danger">* 台灣股票記得一定要加 .TW 喔！</span>
+                        💡 常用熱門提示：台積電(2330.TW)、鴻海(2317.TW)、輝達(NVDA)
                     </div>
                 </div>
-
                 <div class="mb-3">
-                    <label class="form-label fw-bold">💬 請輸入你想查看過去幾天的詳細資料（輸入 1 代表只看最新交易日）：</label>
+                    <label class="form-label fw-bold">💬 請輸入想查看過去幾天：</label>
                     <input type="number" id="userDays" class="form-control" value="5" min="1" max="30">
                 </div>
-
                 <button onclick="startUniversalCrawler()" class="btn btn-primary w-100 fw-bold py-3 fs-5 mt-2">📡 開始下載精準數據</button>
             </div>
 
             <div id="loading" class="text-center my-4 d-none">
                 <div class="spinner-border text-primary" role="status"></div>
-                <p class="mt-2 text-primary fw-bold" id="loadingText">正在連線網路驗證...</p>
+                <p class="mt-2 text-primary fw-bold">🔍 正在連線網路驗證中...</p>
             </div>
 
             <div id="errorMsg" class="alert alert-danger mt-4 d-none fw-bold"></div>
 
             <div id="resultContainer" class="d-none">
                 <div id="analysisBox" class="alert mt-4 fw-bold fs-5"></div>
-
                 <div class="table-container">
-                    <h5 class="mb
+                    <h5 class="mb-3 text-secondary fw-bold" id="tableTitle">🎉 成功！以下是歷史數據：</h5>
+                    <table class="table table-hover align-middle text-center">
+                        <thead class="table-dark">
+                            <tr>
+                                <th class="th-date">日期</th>
+                                <th>開盤價</th>
+                                <th>最高價</th>
+                                <th>最低價</th>
+                                <th>收盤價</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stockTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function startUniversalCrawler() {
+    const userStock = document.getElementById('userStock').value.trim().toUpperCase();
+    const userDays = parseInt(document.getElementById('userDays').value);
+    
+    const loading = document.getElementById('loading');
+    const errorMsg = document.getElementById('errorMsg');
+    const resultContainer = document.getElementById('resultContainer');
+    const tableBody = document.getElementById('stockTableBody');
+    const analysisBox = document.getElementById('analysisBox');
+    const tableTitle = document.getElementById('tableTitle');
+
+    if (userStock === "" || isNaN(userDays) || userDays < 1) {
+        errorMsg.innerText = "❌ 輸入錯誤，請檢查代號或天數！";
+        errorMsg.classList.remove('d-none');
+        return;
+    }
+
+    loading.classList.remove('d-none');
+    errorMsg.classList.add('d-none');
+    resultContainer.classList.add('d-none');
+    tableBody.innerHTML = '';
+
+    try {
+        const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${userStock}?range=60d&interval=1d`;
+        // 改用更穩定的 allorigins 轉接站
+        const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`);
+        const jsonResult = await response.json();
+        
+        if (!jsonResult.contents) throw new Error("網路轉接失敗。");
+        const data = JSON.parse(jsonResult.contents);
+        const result = data.chart.result ? data.chart.result[0] : null;
+        
+        if (!result || !result.timestamp) {
+            throw new Error(`找不到 [${userStock}] 的資料！可能代號打錯了。`);
+        }
+
+        const timestamps = result.timestamp;
+        const quote = result.indicators.quote[0];
+        
+        let historicalData = [];
+        for (let i = 0; i < timestamps.length; i++) {
+            if (quote.open[i] !== null && quote.close[i] !== null) {
+                const dateObj = new Date(timestamps[i] * 1000);
+                const formattedDate = dateObj.toISOString().split('T')[0];
+                historicalData.push({
+                    date: formattedDate,
+                    open: quote.open[i].toFixed(2),
+                    high: quote.high[i].toFixed(2),
+                    low: quote.low[i].toFixed(2),
+                    close: quote.close[i].toFixed(2),
+                    closeRaw: quote.close[i]
+                });
+            }
+        }
+
+        historicalData.reverse();
+        const displayData = historicalData.slice(0, userDays);
+
+        tableTitle.innerText = `🎉 成功！以下是 ${userStock} 最近 ${displayData.length} 個交易日的【詳細歷史數據】：`;
+        
+        displayData.forEach(day => {
+            tableBody.innerHTML += `<tr>
+                <td><strong>${day.date}</strong></td>
+                <td>${day.open}</td>
+                <td class="text-danger">${day.high}</td>
+                <td class="text-success">${day.low}</td>
+                <td><span class="badge bg-secondary fs-6">${day.close}</span></td>
+            </tr>`;
+        });
+
+        if (displayData.length >= 2) {
+            const priceChange = (displayData[0].closeRaw - displayData[1].closeRaw).toFixed(2);
+            analysisBox.className = "alert mt-4 fw-bold fs-5 " + (priceChange > 0 ? "alert-success" : priceChange < 0 ? "alert-danger" : "alert-warning");
+            analysisBox.innerHTML = priceChange > 0 ? `💡 漲跌評估：今天比上一個交易日【🟢 上漲】了 ${priceChange} 元` : priceChange < 0 ? `💡 漲跌評估：今天比上一個交易日【🔴 下跌】了 ${Math.abs(priceChange)} 元` : `💡 漲跌評估：今天價格持平【🟡 平盤】`;
+        } else {
+            analysisBox.className = "alert alert-info mt-4 fw-bold fs-5";
+            analysisBox.innerHTML = "💡 提示：因為你只抓取 1 天的資料，所以無法與前一天進行漲跌對照喔！";
+        }
+
+        resultContainer.classList.remove('d-none');
+    } catch (err) {
+        errorMsg.innerText = `❌ 錯誤：${err.message}`;
+        errorMsg.classList.remove('d-none');
+    } fileName
+    finally {
+        loading.classList.add('d-none');
+    }
+}
+</script>
+</body>
+</html>
